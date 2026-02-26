@@ -39,6 +39,19 @@ class MovieController extends Controller
         3 => ['Song Kang-ho', 'Choi Woo-shik', 'Park So-dam'],
     ];
 
+    private $reviews = [
+        1 => [
+            ['id' => 1, 'reviewer' => 'Ana', 'rating' => 9, 'comment' => 'Mind-blowing concept'],
+            ['id' => 2, 'reviewer' => 'Carlos', 'rating' => 8, 'comment' => 'Great visuals and soundtrack'],
+        ],
+        2 => [
+            ['id' => 1, 'reviewer' => 'Maria', 'rating' => 10, 'comment' => 'Classic masterpiece'],
+        ],
+        3 => [
+            ['id' => 1, 'reviewer' => 'Joao', 'rating' => 9, 'comment' => 'Sharp social critique'],
+        ],
+    ];
+
     public function index()
     {
         return response()->json(['data' => $this->movies]);
@@ -174,6 +187,95 @@ class MovieController extends Controller
         ]);
     }
 
+    public function topRated()
+    {
+        $sorted = $this->movies;
+
+        usort($sorted, function ($a, $b) {
+            return $b['rating'] <=> $a['rating'];
+        });
+
+        return response()->json(['data' => $sorted]);
+    }
+
+    public function byDirector($name)
+    {
+        $needle = strtolower($name);
+
+        $filtered = array_values(array_filter($this->movies, function ($movie) use ($needle) {
+            return strpos(strtolower($movie['director']), $needle) !== false;
+        }));
+
+        return response()->json(['data' => $filtered]);
+    }
+
+    public function similar($id)
+    {
+        $movie = $this->findById((int) $id);
+
+        if (!$movie) {
+            return response()->json(['message' => 'Movie not found'], 404);
+        }
+
+        $similar = array_values(array_filter($this->movies, function ($item) use ($movie) {
+            return $item['id'] !== $movie['id'] && strtolower($item['genre']) === strtolower($movie['genre']);
+        }));
+
+        return response()->json([
+            'data' => [
+                'movie' => $movie,
+                'similar' => $similar,
+            ],
+        ]);
+    }
+
+    public function reviews($id)
+    {
+        $movie = $this->findById((int) $id);
+
+        if (!$movie) {
+            return response()->json(['message' => 'Movie not found'], 404);
+        }
+
+        return response()->json([
+            'data' => [
+                'movie' => $movie,
+                'reviews' => $this->reviews[$movie['id']] ?? [],
+            ],
+        ]);
+    }
+
+    public function storeReview($id, Request $request)
+    {
+        $movie = $this->findById((int) $id);
+
+        if (!$movie) {
+            return response()->json(['message' => 'Movie not found'], 404);
+        }
+
+        $data = $request->validate([
+            'reviewer' => 'required|string|max:80',
+            'rating' => 'required|numeric|min:0|max:10',
+            'comment' => 'required|string|max:500',
+        ]);
+
+        $newReview = [
+            'id' => $this->nextReviewId($movie['id']),
+            'reviewer' => $data['reviewer'],
+            'rating' => (float) $data['rating'],
+            'comment' => $data['comment'],
+        ];
+
+        return response()->json([
+            'message' => 'Review created',
+            'data' => [
+                'movie' => $movie,
+                'review' => $newReview,
+            ],
+            'note' => 'Demo API sem persistencia em banco',
+        ], 201);
+    }
+
     private function findById($id)
     {
         foreach ($this->movies as $movie) {
@@ -188,5 +290,16 @@ class MovieController extends Controller
     private function nextId()
     {
         return max(array_column($this->movies, 'id')) + 1;
+    }
+
+    private function nextReviewId($movieId)
+    {
+        $reviews = $this->reviews[$movieId] ?? [];
+
+        if (empty($reviews)) {
+            return 1;
+        }
+
+        return max(array_column($reviews, 'id')) + 1;
     }
 }
